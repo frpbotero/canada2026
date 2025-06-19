@@ -3,9 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Planejamento | Viagem ao Canadá</title>
+    <title>Viagem ao Canadá</title>
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml;charset=UTF-8,
+        %3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E
+        %3Ctext x='50' y='70' font-size='80' text-anchor='middle'%3E🍁%3C/text%3E
+        %3C/svg%3E">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -139,7 +146,7 @@
                             <div class="chart-container" style="height: 250px; max-height: 250px;">
                                 <canvas id="progress-chart"></canvas>
                             </div>
-                            <div id="progress-text" class="text-2xl font-bold -mt-20">0%</div>
+                            <div id="progress-text" class="text-2xl font-bold -mt-40">0%</div>
                             <p class="text-stone-600">da meta atingida</p>
                         </div>
                         
@@ -229,7 +236,7 @@
                     labels: ['Intercâmbio/Seguro', 'Passagens', 'Acomodação', 'Alimentação', 'Transporte', 'Visto', 'Extras'],
                     values: [14000, 14000, 4138.75, 8624, 731.5, 1424.5, 1732.5] 
                 },
-                timelineGoal: 26151.25
+                timelineGoal: 26151.25 // This is (Min Total Cost - Extras)
             },
             '8-weeks': {
                 totalCost: [57475.1, 69895.6],
@@ -239,7 +246,7 @@
                     labels: ['Intercâmbio/Seguro', 'Passagens', 'Acomodação', 'Alimentação', 'Transporte', 'Visto', 'Extras'],
                     values: [14000, 14000, 12416.25, 16170, 2409.6, 1424.5, 3465]
                 },
-                timelineGoal: 44685.35
+                timelineGoal: 44685.35 // This is (Min Total Cost - Extras)
             }
         };
 
@@ -392,10 +399,7 @@
             let accumulatedPlanned = 0;
             for(let i = 0; i < months.length; i++) {
                 accumulatedPlanned += monthlyGoal;
-                const extra = extraContributions.find(e => e.monthIndex === i);
-                if(extra) {
-                   accumulatedPlanned += extra.amount;
-                }
+                // REMOVED: Adding extra contributions to plannedSavings as they are already factored into the timelineGoal
                 plannedSavings.push(accumulatedPlanned > goal ? goal : accumulatedPlanned);
             }
             timelineChart.data.datasets[0].data = plannedSavings; 
@@ -428,10 +432,7 @@
                 let monthTotal = monthData.felipe + monthData.miriam;
                 currentTotalSaved += monthTotal;
 
-                const extra = extraContributions.find(e => e.monthIndex === index);
-                if (extra) {
-                    currentTotalSaved += extra.amount;
-                }
+                // REMOVED: Adding extra contributions here, as they subtract from the goal, not add to monthly savings
                 accumulatedSavingsForTimeline.push(currentTotalSaved);
             });
 
@@ -465,7 +466,8 @@
                 
                 let year = 2025;
                 // Determine the correct year for the planning month
-                if (index >= months.indexOf('Jan')) { 
+                // Assuming planning starts in Sep 2025 and goes to May 2026
+                if (['Jan', 'Fev', 'Mar', 'Abr', 'Mai'].includes(monthName)) { 
                     year = 2026;
                 }
 
