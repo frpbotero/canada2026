@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Planejamento | Viagem ao Canadá</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app;
+        let db;
+        let auth;
+        let currentUserId = null;
+
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // Export for global access in the main script
+            window.firebaseApp = app;
+            window.firebaseDb = db;
+            window.firebaseAuth = auth;
+
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    currentUserId = user.uid;
+                    document.getElementById('user-id-display').textContent = `ID do Usuário: ${currentUserId}`;
+                    if (window.onFirebaseAuthReady) {
+                        window.onFirebaseAuthReady();
+                    }
+                } else {
+                    try {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (error) {
+                        console.error("Erro ao autenticar no Firebase:", error);
+                        // Fallback for unauthenticated user, generate a random ID
+                        currentUserId = crypto.randomUUID();
+                        document.getElementById('user-id-display').textContent = `ID do Usuário (Anônimo): ${currentUserId}`;
+                        if (window.onFirebaseAuthReady) {
+                            window.onFirebaseAuthReady();
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error("Erro ao inicializar Firebase:", error);
+            // Fallback for Firebase initialization failure
+            currentUserId = crypto.randomUUID();
+            document.getElementById('user-id-display').textContent = `ID do Usuário (Erro Firebase): ${currentUserId}`;
+            if (window.onFirebaseAuthReady) {
+                window.onFirebaseAuthReady();
+            }
+        }
+    </script>
+    <!-- Chosen Palette: Warm Neutrals & Teal -->
+    <!-- Application Structure Plan: A dashboard-style SPA designed to help a couple (Felipe and Miriam) interactively plan and track their savings for a trip to Canada. The structure prioritizes user interaction and clarity over mirroring the source report's linear format. The core user flow is: 1. Select a trip duration (4 or 8 weeks) via a toggle. 2. See key financial metrics (total cost, savings goal) update instantly. 3. Input current savings, now granularly by month for Felipe and Miriam, to see real-time progress on a donut chart and a timeline chart. 4. Explore a detailed cost breakdown for the selected scenario. This task-oriented design (compare scenarios, track progress, granular monthly input) was chosen because it directly addresses the user's main goals: understanding the financial implications of their choice and staying motivated by tracking their savings with precise monthly entries. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Two trip scenarios (4 vs 8 weeks). Goal: Compare. Viz/Method: HTML/JS toggle buttons. Interaction: Click to update entire dashboard state. Justification: The most critical decision point for the user, serves as the primary filter for all other data.
+        - Report Info: Total cost, savings goal, monthly savings. Goal: Inform. Viz/Method: Dynamic HTML text cards. Interaction: Updates on scenario change. Justification: Provides immediate, high-level summary.
+        - Report Info: Current savings vs. total goal. Goal: Track/Motivate. Viz/Method: Interactive Donut Chart (Chart.js) and a derived total from monthly inputs. Interaction: Monthly input drives total, chart updates. Justification: Highly engaging and provides instant visual feedback on progress, which is a key user request.
+        - Report Info: Savings timeline with extra contributions. Goal: Show Change Over Time. Viz/Method: Line Chart (Chart.js). Interaction: Updates with user monthly savings input, shows projected vs. actual path. Justification: Visualizes the 9-month journey and highlights the impact of large, one-time contributions, now reflecting granular monthly entries.
+        - Report Info: Detailed cost categories. Goal: Organize/Inform. Viz/Method: Bar Chart (Chart.js). Interaction: Updates on scenario change. Justification: Clearly breaks down where the money is allocated, helping in budget management.
+        - Report Info: Monthly savings by individual. Goal: Track/Inform. Viz/Method: Dedicated input fields per month for Felipe and Miriam. Interaction: Direct input updates total and charts. Justification: Directly addresses user's request for granular monthly tracking for each person.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chart-container { position: relative; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto; height: 300px; max-height: 400px; }
+        @media (min-width: 768px) { .chart-container { height: 350px; } }
+        .progress-bar-bg { background-color: #e2e8f0; }
+        .progress-bar-fill { background-color: #0d9488; transition: width 0.5s ease-in-out; }
+        .toggle-btn.active { background-color: #0d9488; color: white; }
+        .toggle-btn { background-color: #e2e8f0; color: #334155; }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-teal-800">Planejamento da Viagem ao Canadá 🍁</h1>
+            <p class="text-stone-600 mt-2">Um painel interativo para ajudar Felipe e Miriam a realizarem seu sonho.</p>
+            <p id="user-id-display" class="text-xs text-stone-400 mt-1">ID do Usuário:</p>
+        </header>
+
+        <main>
+            <section id="overview" class="mb-8">
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <div class="flex flex-col items-center">
+                        <h2 class="text-xl font-bold text-center mb-4">Qual é o plano?</h2>
+                        <div class="flex space-x-2 border border-stone-200 rounded-full p-1 mb-6">
+                            <button id="btn-4-weeks" class="toggle-btn w-32 py-2 px-4 rounded-full font-semibold transition-colors duration-300">4 Semanas</button>
+                            <button id="btn-8-weeks" class="toggle-btn w-32 py-2 px-4 rounded-full font-semibold transition-colors duration-300">8 Semanas</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                        <div class="bg-teal-50 p-4 rounded-lg">
+                            <h3 class="text-sm font-semibold text-teal-700">CUSTO TOTAL ESTIMADO</h3>
+                            <p id="total-cost" class="text-2xl font-extrabold text-teal-900">R$ 0</p>
+                        </div>
+                        <div class="bg-amber-50 p-4 rounded-lg">
+                            <h3 class="text-sm font-semibold text-amber-700">META DE POUPANÇA</h3>
+                            <p id="savings-goal" class="text-2xl font-extrabold text-amber-900">R$ 0</p>
+                            <p class="text-xs text-stone-500">(Custo Total - R$19.000 Extras)</p>
+                        </div>
+                        <div class="bg-sky-50 p-4 rounded-lg">
+                            <h3 class="text-sm font-semibold text-sky-700">POUPANÇA MENSAL (Projeção)</h3>
+                            <p id="monthly-savings" class="text-2xl font-extrabold text-sky-900">R$ 0</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="savings-tracker" class="mb-8">
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold text-center mb-2">Acompanhamento da Poupança Total</h2>
+                    <p class="text-center text-stone-600 mb-6">Este é o progresso geral da sua poupança, calculado a partir dos valores mensais que vocês inserirem abaixo. O valor abaixo é apenas para visualização.</p>
+                    
+                    <div class="flex flex-col md:flex-row gap-8 items-center">
+                        <div class="w-full md:w-1/3 text-center">
+                            <div class="chart-container" style="height: 250px; max-height: 250px;">
+                                <canvas id="progress-chart"></canvas>
+                            </div>
+                            <div id="progress-text" class="text-2xl font-bold -mt-20">0%</div>
+                            <p class="text-stone-600">da meta atingida</p>
+                        </div>
+                        
+                        <div class="w-full md:w-2/3">
+                            <div class="mb-4">
+                                <label for="amount-saved-input" class="block text-sm font-medium text-stone-700 mb-1">Valor Total Já Economizado (R$):</label>
+                                <input type="number" id="amount-saved-input" class="w-full p-2 border border-stone-300 rounded-md" value="0" step="100" readonly>
+                                <input type="range" id="amount-saved-slider" class="w-full mt-2" value="0" min="0" disabled>
+                            </div>
+
+                            <div class="mt-4">
+                                <h3 class="text-lg font-semibold text-center mb-2">Evolução da Poupança (9 Meses)</h3>
+                                 <div class="chart-container" style="height: 280px; max-height: 280px;">
+                                    <canvas id="savings-timeline-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="monthly-savings-input" class="mb-8">
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold text-center mb-2">Detalhar Poupança Mensal de Felipe e Miriam</h2>
+                    <p class="text-center text-stone-600 mb-6">Insira os valores que Felipe e Miriam economizaram em cada mês. Os meses passados não podem ser alterados.</p>
+                    <div id="monthly-inputs-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Monthly input cards will be generated here by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <section id="cost-breakdown">
+                    <div class="bg-white p-6 rounded-xl shadow-md h-full">
+                         <h2 class="text-xl font-bold text-center mb-2">Detalhamento dos Custos</h2>
+                         <p class="text-center text-stone-600 mb-6">Veja para onde vai o dinheiro. Este gráfico mostra a distribuição dos principais custos para o cenário que você selecionou, ajudando a entender as maiores despesas.</p>
+                        <div class="chart-container" style="height: 350px; max-height: 450px;">
+                            <canvas id="costs-chart"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="extra-contributions">
+                    <div class="bg-white p-6 rounded-xl shadow-md h-full">
+                        <h2 class="text-xl font-bold text-center mb-2">Impulsos Financeiros 🚀</h2>
+                        <p class="text-center text-stone-600 mb-6">Não se esqueçam destas contribuições extras que darão um grande impulso na poupança! Elas já estão descontadas da sua meta principal.</p>
+                        <div class="space-y-4 mt-8">
+                            <div class="flex items-center bg-stone-100 p-4 rounded-lg">
+                                <div class="text-2xl mr-4">💰</div>
+                                <div>
+                                    <p class="font-bold">13º Salário (Felipe & Miriam)</p>
+                                    <p class="text-xl font-bold text-teal-700">R$ 13.000</p>
+                                    <p class="text-sm text-stone-500">Dezembro/2025</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center bg-stone-100 p-4 rounded-lg">
+                                <div class="text-2xl mr-4">🏆</div>
+                                <div>
+                                    <p class="font-bold">Bônus (Felipe)</p>
+                                    <p class="text-xl font-bold text-teal-700">R$ 6.000</p>
+                                    <p class="text-sm text-stone-500">Março/2026</p>
+                                </div>
+                            </div>
+                             <div class="flex items-center bg-amber-100 p-4 rounded-lg border-l-4 border-amber-500">
+                                <div class="text-2xl mr-4">🤔</div>
+                                <div>
+                                    <p class="font-bold">Valores de Férias</p>
+                                    <p class="text-md text-amber-800">Os valores de férias (R$45.803 cada) não foram incluídos. Se puderem ser usados, a meta de poupança será drasticamente reduzida!</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        import { doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        const tripData = {
+            '4-weeks': {
+                totalCost: [41763.75, 48538.75],
+                savingsGoal: [22763.75, 29538.75],
+                monthlySavings: [2529.31, 3282.08],
+                costs: {
+                    labels: ['Intercâmbio/Seguro', 'Passagens', 'Acomodação', 'Alimentação', 'Transporte', 'Visto', 'Extras'],
+                    values: [14000, 14000, 4138.75, 8624, 731.5, 1424.5, 1732.5] 
+                },
+                timelineGoal: 26151.25
+            },
+            '8-weeks': {
+                totalCost: [57475.1, 69895.6],
+                savingsGoal: [38475.1, 50895.6],
+                monthlySavings: [4275.01, 5655.07],
+                costs: {
+                    labels: ['Intercâmbio/Seguro', 'Passagens', 'Acomodação', 'Alimentação', 'Transporte', 'Visto', 'Extras'],
+                    values: [14000, 14000, 12416.25, 16170, 2409.6, 1424.5, 3465]
+                },
+                timelineGoal: 44685.35
+            }
+        };
+
+        const extraContributions = [
+            { monthIndex: 3, amount: 13000 }, 
+            { monthIndex: 6, amount: 6000 }  
+        ];
+
+        let currentState = {
+            scenario: '4-weeks',
+            amountSaved: 0
+        };
+
+        const months = ['Set', 'Out', 'Nov', 'Dez', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai'];
+        // Initialize monthlyContributionsData with default values (0 for Felipe and Miriam)
+        let monthlyContributionsData = months.map(month => ({ month: month, felipe: 0, miriam: 0 }));
+
+        const btn4Weeks = document.getElementById('btn-4-weeks');
+        const btn8Weeks = document.getElementById('btn-8-weeks');
+        const totalCostEl = document.getElementById('total-cost');
+        const savingsGoalEl = document.getElementById('savings-goal');
+        const monthlySavingsEl = document.getElementById('monthly-savings');
+        const amountSavedInput = document.getElementById('amount-saved-input');
+        const amountSavedSlider = document.getElementById('amount-saved-slider');
+        const progressTextEl = document.getElementById('progress-text');
+        const monthlyInputsContainer = document.getElementById('monthly-inputs-container');
+
+        const formatCurrency = (value) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const formatRange = (arr) => `${formatCurrency(arr[0])} - ${formatCurrency(arr[1])}`;
+        
+        Chart.defaults.font.family = 'Inter, sans-serif';
+        Chart.defaults.color = '#475569';
+
+        const progressChartCtx = document.getElementById('progress-chart').getContext('2d');
+        const progressChart = new Chart(progressChartCtx, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: ['#0d9488', '#e2e8f0'],
+                    borderWidth: 0,
+                    borderRadius: 5,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: { tooltip: { enabled: false } }
+            }
+        });
+        
+        const costsChartCtx = document.getElementById('costs-chart').getContext('2d');
+        const costsChart = new Chart(costsChartCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Custo Estimado (Média)',
+                    data: [],
+                    backgroundColor: '#14b8a6',
+                    borderColor: '#0f766e',
+                    borderWidth: 1,
+                    borderRadius: 5,
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.label}: ${formatCurrency(context.raw)}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { beginAtZero: true, grid: { display: false } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+        
+        const timelineChartCtx = document.getElementById('savings-timeline-chart').getContext('2d');
+        const timelineChart = new Chart(timelineChartCtx, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [
+                    {
+                        label: 'Meta de Poupança (Projetada)',
+                        data: [],
+                        borderColor: '#a8a29e',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 0,
+                    },
+                    {
+                        label: 'Sua Poupança (Atual)',
+                        data: [],
+                        borderColor: '#0d9488',
+                        backgroundColor: 'rgba(13, 148, 136, 0.1)',
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#0d9488',
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${formatCurrency(context.raw)}` } }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        function updateSummaryCards() {
+            const data = tripData[currentState.scenario];
+            totalCostEl.textContent = formatRange(data.totalCost);
+            savingsGoalEl.textContent = formatRange(data.savingsGoal);
+            monthlySavingsEl.textContent = formatRange(data.monthlySavings);
+        }
+
+        function updateProgressChart(currentSaved, goal) {
+            const progressPercentage = goal > 0 ? (currentSaved / goal) * 100 : 0;
+            progressChart.data.datasets[0].data = [progressPercentage, 100 - progressPercentage];
+            progressChart.update();
+            progressTextEl.textContent = `${Math.round(progressPercentage)}%`;
+        }
+
+        function updateCostsChart() {
+            const data = tripData[currentState.scenario];
+            costsChart.data.labels = data.costs.labels;
+            costsChart.data.datasets[0].data = data.costs.values;
+            costsChart.update();
+        }
+
+        function updateTimelineChart(accumulatedSavingsPerMonth, goal) {
+            let plannedSavings = [];
+            let monthlyGoal = tripData[currentState.scenario].monthlySavings[0]; 
+            let accumulatedPlanned = 0;
+            for(let i = 0; i < months.length; i++) {
+                accumulatedPlanned += monthlyGoal;
+                const extra = extraContributions.find(e => e.monthIndex === i);
+                if(extra) {
+                   accumulatedPlanned += extra.amount;
+                }
+                plannedSavings.push(accumulatedPlanned > goal ? goal : accumulatedPlanned);
+            }
+            timelineChart.data.datasets[0].data = plannedSavings; 
+
+            timelineChart.data.datasets[1].data = accumulatedSavingsPerMonth; 
+            timelineChart.update();
+        }
+
+        async function saveDataToFirestore() {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const userId = window.firebaseAuth.currentUser?.uid || crypto.randomUUID();
+            if (window.firebaseDb && userId) {
+                const docRef = doc(window.firebaseDb, `artifacts/${appId}/users/${userId}/planningData/tripPlan`);
+                try {
+                    await setDoc(docRef, {
+                        scenario: currentState.scenario,
+                        monthlyContributions: monthlyContributionsData
+                    });
+                } catch (e) {
+                    console.error("Erro ao salvar dados no Firestore:", e);
+                }
+            }
+        }
+
+        function recalculateAndRefreshAll() {
+            let currentTotalSaved = 0;
+            let accumulatedSavingsForTimeline = [];
+
+            monthlyContributionsData.forEach((monthData, index) => {
+                let monthTotal = monthData.felipe + monthData.miriam;
+                currentTotalSaved += monthTotal;
+
+                const extra = extraContributions.find(e => e.monthIndex === index);
+                if (extra) {
+                    currentTotalSaved += extra.amount;
+                }
+                accumulatedSavingsForTimeline.push(currentTotalSaved);
+            });
+
+            const goal = tripData[currentState.scenario].timelineGoal;
+            // Cap accumulated savings at the goal if they exceed it
+            accumulatedSavingsForTimeline = accumulatedSavingsForTimeline.map(val => Math.min(val, goal));
+            currentTotalSaved = Math.min(currentTotalSaved, goal); 
+
+            currentState.amountSaved = currentTotalSaved;
+            amountSavedInput.value = currentTotalSaved;
+            amountSavedSlider.value = currentTotalSaved;
+            amountSavedSlider.max = goal; // Update slider max based on current goal
+
+            updateProgressChart(currentTotalSaved, goal);
+            updateTimelineChart(accumulatedSavingsForTimeline, goal);
+            saveDataToFirestore(); // Save data after every change
+        }
+
+        function renderMonthlyInputs() {
+            monthlyInputsContainer.innerHTML = ''; 
+            const today = new Date();
+            today.setDate(1); // Set to 1st to compare month-to-month without day bias
+
+            const monthNumMap = {
+                'Jan': 0, 'Fev': 1, 'Mar': 2, 'Abr': 3, 'Mai': 4, 'Jun': 5,
+                'Jul': 6, 'Ago': 7, 'Set': 8, 'Out': 9, 'Nov': 10, 'Dez': 11
+            };
+
+            months.forEach((monthName, index) => {
+                const monthData = monthlyContributionsData[index];
+                
+                let year = 2025;
+                // Determine the correct year for the planning month
+                if (index >= months.indexOf('Jan')) { 
+                    year = 2026;
+                }
+
+                const planningMonthNum = monthNumMap[monthName];
+                const planningDate = new Date(year, planningMonthNum, 1);
+
+                const isDisabled = planningDate < today;
+
+                const card = document.createElement('div');
+                card.className = 'bg-stone-100 p-4 rounded-lg shadow-sm';
+                card.innerHTML = `
+                    <h3 class="font-bold text-lg mb-2">${monthName} ${year}</h3>
+                    <div class="mb-2">
+                        <label for="felipe-${index}" class="block text-sm text-stone-700">Felipe (R$)</label>
+                        <input type="number" id="felipe-${index}" class="w-full p-2 border border-stone-300 rounded-md mt-1" value="${monthData.felipe}" min="0" step="100" ${isDisabled ? 'disabled' : ''}>
+                    </div>
+                    <div>
+                        <label for="miriam-${index}" class="block text-sm text-stone-700">Miriam (R$)</label>
+                        <input type="number" id="miriam-${index}" class="w-full p-2 border border-stone-300 rounded-md mt-1" value="${monthData.miriam}" min="0" step="100" ${isDisabled ? 'disabled' : ''}>
+                    </div>
+                    <p class="text-sm text-stone-500 mt-2">Total Mês: <span id="total-month-${index}">${formatCurrency(monthData.felipe + monthData.miriam)}</span></p>
+                `;
+                monthlyInputsContainer.appendChild(card);
+
+                card.querySelector(`#felipe-${index}`).addEventListener('input', (e) => {
+                    monthlyContributionsData[index].felipe = parseFloat(e.target.value) || 0;
+                    card.querySelector(`#total-month-${index}`).textContent = formatCurrency(monthlyContributionsData[index].felipe + monthlyContributionsData[index].miriam);
+                    recalculateAndRefreshAll();
+                });
+                card.querySelector(`#miriam-${index}`).addEventListener('input', (e) => {
+                    monthlyContributionsData[index].miriam = parseFloat(e.target.value) || 0;
+                    card.querySelector(`#total-month-${index}`).textContent = formatCurrency(monthlyContributionsData[index].felipe + monthlyContributionsData[index].miriam);
+                    recalculateAndRefreshAll();
+                });
+            });
+        }
+
+        async function loadDataFromFirestore() {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const userId = window.firebaseAuth.currentUser?.uid;
+
+            if (window.firebaseDb && userId) {
+                const docRef = doc(window.firebaseDb, `artifacts/${appId}/users/${userId}/planningData/tripPlan`);
+                onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        currentState.scenario = data.scenario || '4-weeks';
+                        monthlyContributionsData = data.monthlyContributions || months.map(month => ({ month: month, felipe: 0, miriam: 0 }));
+                        
+                        // Set active button based on loaded scenario
+                        if (currentState.scenario === '4-weeks') {
+                            btn4Weeks.classList.add('active');
+                            btn8Weeks.classList.remove('active');
+                        } else {
+                            btn8Weeks.classList.add('active');
+                            btn4Weeks.classList.remove('active');
+                        }
+                    } else {
+                        console.log("Nenhum dado encontrado no Firestore para este usuário. Iniciando com valores padrão.");
+                        // If no data, ensure default scenario is active
+                        btn4Weeks.classList.add('active');
+                        btn8Weeks.classList.remove('active');
+                    }
+                    initializeDashboard();
+                }, (error) => {
+                    console.error("Erro ao carregar dados do Firestore:", error);
+                    // Fallback to default if there's an error fetching
+                    initializeDashboard(); 
+                });
+            } else {
+                console.warn("Firebase DB ou User ID não disponíveis, carregando dashboard com dados padrão.");
+                initializeDashboard(); // Proceed with default data if Firebase/user ID is not ready
+            }
+        }
+
+        function initializeDashboard() {
+            updateSummaryCards();
+            updateCostsChart();
+            renderMonthlyInputs(); 
+            recalculateAndRefreshAll(); 
+        }
+
+        btn4Weeks.addEventListener('click', () => {
+            if (currentState.scenario !== '4-weeks') { // Only update if changing scenario
+                currentState.scenario = '4-weeks';
+                btn4Weeks.classList.add('active');
+                btn8Weeks.classList.remove('active');
+                initializeDashboard();
+            }
+        });
+
+        btn8Weeks.addEventListener('click', () => {
+            if (currentState.scenario !== '8-weeks') { // Only update if changing scenario
+                currentState.scenario = '8-weeks';
+                btn8Weeks.classList.add('active');
+                btn4Weeks.classList.remove('active');
+                initializeDashboard();
+            }
+        });
+
+        // Set up a global function that Firebase import script can call when auth is ready
+        window.onFirebaseAuthReady = () => {
+            loadDataFromFirestore();
+        };
+
+        // If Firebase is already ready (e.g. from a quick re-run in Canvas), call it directly
+        if (window.firebaseAuth && window.firebaseAuth.currentUser) {
+             window.onFirebaseAuthReady();
+        } else if (!window.firebaseAuth) { // If Firebase was not even initialized (e.g. script error)
+            console.error("Firebase SDK not available. Running dashboard with default data.");
+            initializeDashboard();
+        }
+    </script>
+</body>
+</html>
