@@ -3,41 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Viagem ao Canadá</title>
-    <link rel="icon" type="image/svg+xml"
-        href="data:image/svg+xml;charset=UTF-8,
-        %3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E
-        %3Ctext x='50' y='70' font-size='80' text-anchor='middle'%3E🍁%3C/text%3E
-        %3C/svg%3E">
-
+    <title>Painel de Planejamento | Viagem ao Canadá</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
     <!-- Firebase SDK -->
     <script type="module">
+        // Importa a configuração do Firebase de um arquivo separado
+        import { firebaseConfig } from './firebase-config.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Firebase global variables provided by the Canvas environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let app;
         let db;
         let auth;
-        let currentUserId = null;
+        let currentUserId = null; // Para armazenar o ID do usuário após a autenticação ou geração
 
         try {
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
 
-            // Export for global access in the main script
+            // Exportar para acesso global no script principal
             window.firebaseApp = app;
             window.firebaseDb = db;
             window.firebaseAuth = auth;
@@ -46,21 +36,24 @@
                 if (user) {
                     currentUserId = user.uid;
                     document.getElementById('user-id-display').textContent = `ID do Usuário: ${currentUserId}`;
+                    // Sinaliza que o Firebase está pronto para operações de dados
                     if (window.onFirebaseAuthReady) {
                         window.onFirebaseAuthReady();
                     }
                 } else {
+                    // Se nenhum usuário estiver logado, faz login anonimamente
                     try {
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
+                        await signInAnonymously(auth);
+                        // onAuthStateChanged será acionado novamente com o novo usuário anônimo
                     } catch (error) {
-                        console.error("Erro ao autenticar no Firebase:", error);
-                        // Fallback for unauthenticated user, generate a random ID
+                        console.error("Erro ao tentar autenticar anonimamente:", error);
+                        // Mensagem de erro específica para a chave de API inválida
+                        if (error.code === 'auth/api-key-not-valid') {
+                            console.error("ERRO CRÍTICO: Sua chave de API do Firebase é inválida. Por favor, substitua os dados na variável 'firebaseConfig' no arquivo firebase-config.js com os dados reais do seu projeto Firebase. Você os encontra nas Configurações do Projeto no console do Firebase.");
+                        }
+                        // Fallback caso o login anônimo falhe (ex: problema de configuração do Firebase)
                         currentUserId = crypto.randomUUID();
-                        document.getElementById('user-id-display').textContent = `ID do Usuário (Anônimo): ${currentUserId}`;
+                        document.getElementById('user-id-display').textContent = `ID do Usuário (Erro Auth): ${currentUserId}`;
                         if (window.onFirebaseAuthReady) {
                             window.onFirebaseAuthReady();
                         }
@@ -69,9 +62,13 @@
             });
         } catch (error) {
             console.error("Erro ao inicializar Firebase:", error);
-            // Fallback for Firebase initialization failure
-            currentUserId = crypto.randomUUID();
-            document.getElementById('user-id-display').textContent = `ID do Usuário (Erro Firebase): ${currentUserId}`;
+            // Mensagem de erro específica para problemas na inicialização
+            if (error.message.includes("projectId not provided")) {
+                 console.error("ERRO CRÍTICO: 'projectId' não foi fornecido na configuração do Firebase. Por favor, verifique se todos os placeholders na variável 'firebaseConfig' no arquivo firebase-config.js foram preenchidos corretamente.");
+            }
+            // Fallback caso a inicialização do Firebase falhe completamente
+            currentUserId = crypto.randomUUID(); // Gera um ID aleatório se a inicialização do Firebase falhar
+            document.getElementById('user-id-display').textContent = `ID do Usuário (Erro Init): ${currentUserId}`;
             if (window.onFirebaseAuthReady) {
                 window.onFirebaseAuthReady();
             }
@@ -103,7 +100,7 @@
     <div class="container mx-auto p-4 md:p-8">
         <header class="text-center mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-teal-800">Planejamento da Viagem ao Canadá 🍁</h1>
-            <p class="text-stone-600 mt-2">Um painel interativo para ajudar Felipe e Miriam a realizarem seu sonho.</p>
+            <p class="text-stone-600 mt-2 text-base md:text-lg">Um painel interativo para ajudar Felipe e Miriam a realizarem seu sonho.</p>
             <p id="user-id-display" class="text-xs text-stone-400 mt-1">ID do Usuário:</p>
         </header>
 
@@ -111,26 +108,26 @@
             <section id="overview" class="mb-8">
                 <div class="bg-white p-6 rounded-xl shadow-md">
                     <div class="flex flex-col items-center">
-                        <h2 class="text-xl font-bold text-center mb-4">Qual é o plano?</h2>
+                        <h2 class="text-xl md:text-2xl font-bold text-center mb-4">Qual é o plano?</h2>
                         <div class="flex space-x-2 border border-stone-200 rounded-full p-1 mb-6">
-                            <button id="btn-4-weeks" class="toggle-btn w-32 py-2 px-4 rounded-full font-semibold transition-colors duration-300">4 Semanas</button>
-                            <button id="btn-8-weeks" class="toggle-btn w-32 py-2 px-4 rounded-full font-semibold transition-colors duration-300">8 Semanas</button>
+                            <button id="btn-4-weeks" class="toggle-btn w-32 py-2 px-4 rounded-full font-semibold text-sm md:text-base transition-colors duration-300">4 Semanas</button>
+                            <button id="btn-8-weeks" class="toggle-btn w-32 py-2 px-4 rounded-full font-semibold text-sm md:text-base transition-colors duration-300">8 Semanas</button>
                         </div>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                         <div class="bg-teal-50 p-4 rounded-lg">
                             <h3 class="text-sm font-semibold text-teal-700">CUSTO TOTAL ESTIMADO</h3>
-                            <p id="total-cost" class="text-2xl font-extrabold text-teal-900">R$ 0</p>
+                            <p id="total-cost" class="text-2xl md:text-3xl font-extrabold text-teal-900">R$ 0</p>
                         </div>
                         <div class="bg-amber-50 p-4 rounded-lg">
                             <h3 class="text-sm font-semibold text-amber-700">META DE POUPANÇA</h3>
-                            <p id="savings-goal" class="text-2xl font-extrabold text-amber-900">R$ 0</p>
+                            <p id="savings-goal" class="text-2xl md:text-3xl font-extrabold text-amber-900">R$ 0</p>
                             <p class="text-xs text-stone-500">(Custo Total - R$19.000 Extras)</p>
                         </div>
                         <div class="bg-sky-50 p-4 rounded-lg">
                             <h3 class="text-sm font-semibold text-sky-700">POUPANÇA MENSAL (Projeção)</h3>
-                            <p id="monthly-savings" class="text-2xl font-extrabold text-sky-900">R$ 0</p>
+                            <p id="monthly-savings" class="text-2xl md:text-3xl font-extrabold text-sky-900">R$ 0</p>
                         </div>
                     </div>
                 </div>
@@ -138,27 +135,27 @@
             
             <section id="savings-tracker" class="mb-8">
                 <div class="bg-white p-6 rounded-xl shadow-md">
-                    <h2 class="text-xl font-bold text-center mb-2">Acompanhamento da Poupança Total</h2>
-                    <p class="text-center text-stone-600 mb-6">Este é o progresso geral da sua poupança, calculado a partir dos valores mensais que vocês inserirem abaixo. O valor abaixo é apenas para visualização.</p>
+                    <h2 class="text-xl md:text-2xl font-bold text-center mb-2">Acompanhamento da Poupança Total</h2>
+                    <p class="text-center text-stone-600 mb-6 text-sm md:text-base">Este é o progresso geral da sua poupança, calculado a partir dos valores mensais que vocês inserirem abaixo. O valor abaixo é apenas para visualização.</p>
                     
                     <div class="flex flex-col md:flex-row gap-8 items-center">
                         <div class="w-full md:w-1/3 text-center">
-                            <div class="chart-container" style="height: 250px; max-height: 250px;">
+                            <div class="chart-container relative" style="height: 250px; max-height: 250px;">
                                 <canvas id="progress-chart"></canvas>
+                                <div id="progress-text" class="absolute inset-0 flex items-center justify-center text-2xl font-bold">0%</div>
                             </div>
-                            <div id="progress-text" class="text-2xl font-bold -mt-40">0%</div>
-                            <p class="text-stone-600">da meta atingida</p>
+                            <p class="text-stone-600 mt-2 text-sm md:text-base">da meta atingida</p>
                         </div>
                         
                         <div class="w-full md:w-2/3">
                             <div class="mb-4">
                                 <label for="amount-saved-input" class="block text-sm font-medium text-stone-700 mb-1">Valor Total Já Economizado (R$):</label>
-                                <input type="number" id="amount-saved-input" class="w-full p-2 border border-stone-300 rounded-md" value="0" step="100" readonly>
+                                <input type="number" id="amount-saved-input" class="w-full p-2 border border-stone-300 rounded-md text-sm md:text-base" value="0" step="100" readonly>
                                 <input type="range" id="amount-saved-slider" class="w-full mt-2" value="0" min="0" disabled>
                             </div>
 
                             <div class="mt-4">
-                                <h3 class="text-lg font-semibold text-center mb-2">Evolução da Poupança (9 Meses)</h3>
+                                <h3 class="text-lg md:text-xl font-semibold text-center mb-2">Evolução da Poupança (9 Meses)</h3>
                                  <div class="chart-container" style="height: 280px; max-height: 280px;">
                                     <canvas id="savings-timeline-chart"></canvas>
                                 </div>
@@ -170,8 +167,8 @@
             
             <section id="monthly-savings-input" class="mb-8">
                 <div class="bg-white p-6 rounded-xl shadow-md">
-                    <h2 class="text-xl font-bold text-center mb-2">Detalhar Poupança Mensal de Felipe e Miriam</h2>
-                    <p class="text-center text-stone-600 mb-6">Insira os valores que Felipe e Miriam economizaram em cada mês. Os meses passados não podem ser alterados.</p>
+                    <h2 class="text-xl md:text-2xl font-bold text-center mb-2">Detalhar Poupança Mensal de Felipe e Miriam</h2>
+                    <p class="text-center text-stone-600 mb-6 text-sm md:text-base">Insira os valores que Felipe e Miriam economizaram em cada mês. Os meses passados não podem ser alterados.</p>
                     <div id="monthly-inputs-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <!-- Monthly input cards will be generated here by JS -->
                     </div>
@@ -181,8 +178,8 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <section id="cost-breakdown">
                     <div class="bg-white p-6 rounded-xl shadow-md h-full">
-                         <h2 class="text-xl font-bold text-center mb-2">Detalhamento dos Custos</h2>
-                         <p class="text-center text-stone-600 mb-6">Veja para onde vai o dinheiro. Este gráfico mostra a distribuição dos principais custos para o cenário que você selecionou, ajudando a entender as maiores despesas.</p>
+                         <h2 class="text-xl md:text-2xl font-bold text-center mb-2">Detalhamento dos Custos</h2>
+                         <p class="text-center text-stone-600 mb-6 text-sm md:text-base">Veja para onde vai o dinheiro. Este gráfico mostra a distribuição dos principais custos para o cenário que você selecionou, ajudando a entender as maiores despesas.</p>
                         <div class="chart-container" style="height: 350px; max-height: 450px;">
                             <canvas id="costs-chart"></canvas>
                         </div>
@@ -191,30 +188,30 @@
 
                 <section id="extra-contributions">
                     <div class="bg-white p-6 rounded-xl shadow-md h-full">
-                        <h2 class="text-xl font-bold text-center mb-2">Impulsos Financeiros 🚀</h2>
-                        <p class="text-center text-stone-600 mb-6">Não se esqueçam destas contribuições extras que darão um grande impulso na poupança! Elas já estão descontadas da sua meta principal.</p>
+                        <h2 class="text-xl md:text-2xl font-bold text-center mb-2">Impulsos Financeiros 🚀</h2>
+                        <p class="text-center text-stone-600 mb-6 text-sm md:text-base">Não se esqueçam destas contribuições extras que darão um grande impulso na poupança! Elas já estão descontadas da sua meta principal.</p>
                         <div class="space-y-4 mt-8">
                             <div class="flex items-center bg-stone-100 p-4 rounded-lg">
                                 <div class="text-2xl mr-4">💰</div>
                                 <div>
-                                    <p class="font-bold">13º Salário (Felipe & Miriam)</p>
-                                    <p class="text-xl font-bold text-teal-700">R$ 13.000</p>
+                                    <p class="font-bold text-base md:text-lg">13º Salário (Felipe & Miriam)</p>
+                                    <p class="text-xl md:text-2xl font-bold text-teal-700">R$ 13.000</p>
                                     <p class="text-sm text-stone-500">Dezembro/2025</p>
                                 </div>
                             </div>
                             <div class="flex items-center bg-stone-100 p-4 rounded-lg">
                                 <div class="text-2xl mr-4">🏆</div>
                                 <div>
-                                    <p class="font-bold">Bônus (Felipe)</p>
-                                    <p class="text-xl font-bold text-teal-700">R$ 6.000</p>
+                                    <p class="font-bold text-base md:text-lg">Bônus (Felipe)</p>
+                                    <p class="text-xl md:text-2xl font-bold text-teal-700">R$ 6.000</p>
                                     <p class="text-sm text-stone-500">Março/2026</p>
                                 </div>
                             </div>
                              <div class="flex items-center bg-amber-100 p-4 rounded-lg border-l-4 border-amber-500">
                                 <div class="text-2xl mr-4">🤔</div>
                                 <div>
-                                    <p class="font-bold">Valores de Férias</p>
-                                    <p class="text-md text-amber-800">Os valores de férias (R$45.803 cada) não foram incluídos. Se puderem ser usados, a meta de poupança será drasticamente reduzida!</p>
+                                    <p class="font-bold text-base md:text-lg">Valores de Férias</p>
+                                    <p class="text-md text-amber-800 text-sm md:text-base">Os valores de férias (R$45.803 cada) não foram incluídos. Se puderem ser usados, a meta de poupança será drasticamente reduzida!</p>
                                 </div>
                             </div>
                         </div>
@@ -409,10 +406,10 @@
         }
 
         async function saveDataToFirestore() {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const userId = window.firebaseAuth.currentUser?.uid || crypto.randomUUID();
+            const userId = window.firebaseAuth.currentUser?.uid; // Use authenticated UID
             if (window.firebaseDb && userId) {
-                const docRef = doc(window.firebaseDb, `artifacts/${appId}/users/${userId}/planningData/tripPlan`);
+                // Caminho modificado para implantação autônoma, removido artifacts/{appId}/
+                const docRef = doc(window.firebaseDb, `users/${userId}/planningData/tripPlan`);
                 try {
                     await setDoc(docRef, {
                         scenario: currentState.scenario,
@@ -421,6 +418,8 @@
                 } catch (e) {
                     console.error("Erro ao salvar dados no Firestore:", e);
                 }
+            } else {
+                console.warn("Não foi possível salvar dados: Usuário não autenticado ou Firebase DB não disponível.");
             }
         }
 
@@ -448,13 +447,13 @@
 
             updateProgressChart(currentTotalSaved, goal);
             updateTimelineChart(accumulatedSavingsForTimeline, goal);
-            saveDataToFirestore(); // Save data after every change
+            saveDataToFirestore(); // Salvar dados após cada alteração
         }
 
         function renderMonthlyInputs() {
             monthlyInputsContainer.innerHTML = ''; 
             const today = new Date();
-            today.setDate(1); // Set to 1st to compare month-to-month without day bias
+            today.setDate(1); // Define para o 1º dia para comparar mês a mês sem viés do dia
 
             const monthNumMap = {
                 'Jan': 0, 'Fev': 1, 'Mar': 2, 'Abr': 3, 'Mai': 4, 'Jun': 5,
@@ -465,8 +464,8 @@
                 const monthData = monthlyContributionsData[index];
                 
                 let year = 2025;
-                // Determine the correct year for the planning month
-                // Assuming planning starts in Sep 2025 and goes to May 2026
+                // Determina o ano correto para o mês de planejamento
+                // Assumindo que o planejamento começa em Setembro de 2025 e vai até Maio de 2026
                 if (['Jan', 'Fev', 'Mar', 'Abr', 'Mai'].includes(monthName)) { 
                     year = 2026;
                 }
@@ -482,11 +481,11 @@
                     <h3 class="font-bold text-lg mb-2">${monthName} ${year}</h3>
                     <div class="mb-2">
                         <label for="felipe-${index}" class="block text-sm text-stone-700">Felipe (R$)</label>
-                        <input type="number" id="felipe-${index}" class="w-full p-2 border border-stone-300 rounded-md mt-1" value="${monthData.felipe}" min="0" step="100" ${isDisabled ? 'disabled' : ''}>
+                        <input type="number" id="felipe-${index}" class="w-full p-2 border border-stone-300 rounded-md mt-1 text-sm md:text-base" value="${monthData.felipe}" min="0" step="100" ${isDisabled ? 'disabled' : ''}>
                     </div>
                     <div>
                         <label for="miriam-${index}" class="block text-sm text-stone-700">Miriam (R$)</label>
-                        <input type="number" id="miriam-${index}" class="w-full p-2 border border-stone-300 rounded-md mt-1" value="${monthData.miriam}" min="0" step="100" ${isDisabled ? 'disabled' : ''}>
+                        <input type="number" id="miriam-${index}" class="w-full p-2 border border-stone-300 rounded-md mt-1 text-sm md:text-base" value="${monthData.miriam}" min="0" step="100" ${isDisabled ? 'disabled' : ''}>
                     </div>
                     <p class="text-sm text-stone-500 mt-2">Total Mês: <span id="total-month-${index}">${formatCurrency(monthData.felipe + monthData.miriam)}</span></p>
                 `;
@@ -506,18 +505,24 @@
         }
 
         async function loadDataFromFirestore() {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const userId = window.firebaseAuth.currentUser?.uid;
+            const userId = window.firebaseAuth.currentUser?.uid; // User ID deve ser resolvido antes de carregar
 
-            if (window.firebaseDb && userId) {
-                const docRef = doc(window.firebaseDb, `artifacts/${appId}/users/${userId}/planningData/tripPlan`);
+            // Garante que o userId esteja disponível antes de tentar operações no Firestore
+            if (!userId) {
+                console.warn("ID do Usuário não disponível para carregamento do Firestore, tentando novamente ou usando dados padrão.");
+                return; // Retorna e aguarda onAuthStateChanged para resolver o usuário
+            }
+
+            if (window.firebaseDb) {
+                // Caminho modificado para implantação autônoma, removido artifacts/{appId}/
+                const docRef = doc(window.firebaseDb, `users/${userId}/planningData/tripPlan`);
                 onSnapshot(docRef, (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         currentState.scenario = data.scenario || '4-weeks';
                         monthlyContributionsData = data.monthlyContributions || months.map(month => ({ month: month, felipe: 0, miriam: 0 }));
                         
-                        // Set active button based on loaded scenario
+                        // Define o botão ativo com base no cenário carregado
                         if (currentState.scenario === '4-weeks') {
                             btn4Weeks.classList.add('active');
                             btn8Weeks.classList.remove('active');
@@ -527,19 +532,19 @@
                         }
                     } else {
                         console.log("Nenhum dado encontrado no Firestore para este usuário. Iniciando com valores padrão.");
-                        // If no data, ensure default scenario is active
+                        // Se não houver dados, garante que o cenário padrão esteja ativo
                         btn4Weeks.classList.add('active');
                         btn8Weeks.classList.remove('active');
                     }
                     initializeDashboard();
                 }, (error) => {
                     console.error("Erro ao carregar dados do Firestore:", error);
-                    // Fallback to default if there's an error fetching
+                    // Fallback para padrão se houver um erro na busca
                     initializeDashboard(); 
                 });
             } else {
-                console.warn("Firebase DB ou User ID não disponíveis, carregando dashboard com dados padrão.");
-                initializeDashboard(); // Proceed with default data if Firebase/user ID is not ready
+                console.warn("Firebase DB não disponível, carregando dashboard com dados padrão.");
+                initializeDashboard(); // Continua com dados padrão se o Firebase DB não estiver disponível
             }
         }
 
@@ -551,7 +556,7 @@
         }
 
         btn4Weeks.addEventListener('click', () => {
-            if (currentState.scenario !== '4-weeks') { // Only update if changing scenario
+            if (currentState.scenario !== '4-weeks') { // Somente atualiza se o cenário estiver mudando
                 currentState.scenario = '4-weeks';
                 btn4Weeks.classList.add('active');
                 btn8Weeks.classList.remove('active');
@@ -560,7 +565,7 @@
         });
 
         btn8Weeks.addEventListener('click', () => {
-            if (currentState.scenario !== '8-weeks') { // Only update if changing scenario
+            if (currentState.scenario !== '8-weeks') { // Somente atualiza se o cenário estiver mudando
                 currentState.scenario = '8-weeks';
                 btn8Weeks.classList.add('active');
                 btn4Weeks.classList.remove('active');
@@ -568,16 +573,18 @@
             }
         });
 
-        // Set up a global function that Firebase import script can call when auth is ready
+        // Configura uma função global que o script de importação do Firebase pode chamar quando a autenticação estiver pronta
         window.onFirebaseAuthReady = () => {
             loadDataFromFirestore();
         };
 
-        // If Firebase is already ready (e.g. from a quick re-run in Canvas), call it directly
+        // Se o Firebase já estiver pronto (ex: de uma execução rápida no Canvas), chama diretamente
+        // No contexto de um servidor estático como o GitHub Pages, isso será verdadeiro apenas
+        // após o onAuthStateChanged resolver.
         if (window.firebaseAuth && window.firebaseAuth.currentUser) {
              window.onFirebaseAuthReady();
-        } else if (!window.firebaseAuth) { // If Firebase was not even initialized (e.g. script error)
-            console.error("Firebase SDK not available. Running dashboard with default data.");
+        } else if (!window.firebaseAuth) { // Se o Firebase nem mesmo foi inicializado (ex: erro de script)
+            console.error("SDK do Firebase não disponível. Executando painel com dados padrão.");
             initializeDashboard();
         }
     </script>
