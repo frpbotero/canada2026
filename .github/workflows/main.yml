@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
   pages: write
-  id-token: write             # exigido pelo action padrão do Pages
+  id-token: write           
 
 jobs:
   build:
@@ -30,7 +30,7 @@ jobs:
       # 2. Publicar para GitHub Pages (sem build, é estático mesmo)
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: "."            # raiz do repositório
+          path: "."          
 
   deploy:
     needs: build
