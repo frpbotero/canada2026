@@ -1,0 +1,44 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [ main ]        # troque se seu branch principal for outro
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write             # exigido pelo action padrão do Pages
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Gerar env.js a partir dos Secrets
+      - name: Create env.js
+        run: |
+          cat > env.js <<'EOF'
+          window._env_ = {
+            FIREBASE_API_KEY: "${{ secrets.FIREBASE_API_KEY }}",
+            FIREBASE_PROJECT_ID: "${{ secrets.FIREBASE_PROJECT_ID }}",
+            FIREBASE_MESSAGING_SENDER_ID: "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
+            FIREBASE_APP_ID: "${{ secrets.FIREBASE_APP_ID }}"
+          };
+          EOF
+
+      # 2. Publicar para GitHub Pages (sem build, é estático mesmo)
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."            # raiz do repositório
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
