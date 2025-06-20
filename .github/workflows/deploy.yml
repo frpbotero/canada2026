@@ -30,7 +30,7 @@ jobs:
       # 2. Publicar para GitHub Pages (sem build, é estático mesmo)
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: "."            # raiz do repositório
+          path: "."            
 
   deploy:
     needs: build
